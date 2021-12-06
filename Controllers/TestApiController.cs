@@ -6,17 +6,19 @@ using Newtonsoft.Json;
 namespace LightFeatherWebAPI.Controllers
 {
     [ApiController]
-    public class SubordinateController : ControllerBase
+    public class TestApiController : ControllerBase
     {
-        private List<Supervisor> _supervisors = new List<Supervisor>();
-        private List<string> _formattedSupervisors = new List<string>();
+        private List<Supervisor> _supervisors = null;
+        private List<string> _formattedSupervisors = null;
+        private string _invalidParamsMessage = "Invalid parameters. First Name, Last Name, and Supervisor are all required parameters";
+        private string _badJSONMessage = "Request body could not be parsed. Check parameter formatting.";
 
-        //private string _testPostData = "firstName=Mark&lastName=Johnson&phoneNumber=770-965-8858&email=test@test.com&supervisor={FirstName: Liam, LastName: Stevens, Jurisdiction: c}";
-        //private string _testURI = "https://localhost:7214/api/submit";
 
         [Route("api/supervisors")]
         public async Task<IActionResult> Get()
         {
+            _supervisors = new List<Supervisor>();
+            _formattedSupervisors = new List<string>();
             using (var httpClient = new HttpClient())
             {
                 using (var response = await httpClient.GetAsync("https://o3m5qixdng.execute-api.us-east-1.amazonaws.com/api/managers"))
@@ -26,13 +28,26 @@ namespace LightFeatherWebAPI.Controllers
                     {
                         _supervisors = JsonConvert.DeserializeObject<List<Supervisor>>(apiResponse);
                     }
+                    catch (JsonReaderException ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                        return BadRequest(_badJSONMessage);
+                    }
                     catch (JsonSerializationException ex)
                     {
                         Console.WriteLine(ex.Message);
-                        return BadRequest(ex.Message);
+                        return BadRequest(_badJSONMessage);
                     }
-                    //PrintSupervisors();
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                        return BadRequest("Invalid Request");
+                    }
                 }
+            }
+            if (_supervisors == null || _supervisors.Count == 0)
+            {
+                return BadRequest("The request returned 0 results");
             }
             SortSupervisors();
             FormatSupervisors();
@@ -47,27 +62,44 @@ namespace LightFeatherWebAPI.Controllers
             _supervisors.RemoveAll(s => double.TryParse(s.Jurisdiction, out attemptedValue) == true);
             //sort by jurisdiction, lastname, then firstname
             _supervisors = _supervisors.OrderBy(s => s.Jurisdiction).ThenBy(s => s.LastName).ThenBy(s => s.FirstName).ToList();
-            //PrintSupervisors();
+        }
+        private void FormatSupervisors()
+        {
+            foreach (Supervisor supervisor in _supervisors)
+            {
+                _formattedSupervisors.Add($"{supervisor.Jurisdiction} - {supervisor.LastName}, {supervisor.FirstName}");
+            }
         }
 
         [Route("api/submit")]
         public async Task<IActionResult> Post()
         {
-            string body;
             Subordinate subordinate = null;
+
             using (var reader = new StreamReader(Request.Body))
             {
-                body = await reader.ReadToEndAsync();
+                string body = await reader.ReadToEndAsync();
+                try
+                {
+                    subordinate = JsonConvert.DeserializeObject<Subordinate>(body);
+                }
+                catch (JsonReaderException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return BadRequest(_badJSONMessage);
+                }
+                catch (JsonSerializationException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return BadRequest(_badJSONMessage);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return BadRequest("Invalid Request");
+                }
             }
-            try
-            {
-                subordinate = JsonConvert.DeserializeObject<Subordinate>(body);
-            }
-            catch (JsonSerializationException ex)
-            {
-                Console.WriteLine(ex.Message);
-                return BadRequest(ex.Message);
-            }
+
             if (subordinate != null && subordinate.Supervisor != null)
             {
                 Console.WriteLine(subordinate.ToString());
@@ -79,54 +111,7 @@ namespace LightFeatherWebAPI.Controllers
             }
             else
             {
-                return BadRequest("Invalid parameters. First Name, Last Name, and Supervisor details are all required parameters");
-            }
-        }
-        //[Route("api/test")]
-        //public async Task<IActionResult> PostTest()
-        //{
-        //    Supervisor supervisor = new Supervisor();
-        //    string testStringSupervisor = JsonConvert.SerializeObject(supervisor);
-
-        //    var values = new Dictionary<string, string>
-        //    {
-        //        { "firstName", "Tom" },
-        //        { "lastName", "world" },
-        //        { "email", "Tom" },
-        //        { "phoneNumber", "world" },
-        //        { "supervisor", testStringSupervisor }
-        //    };
-
-        //    var content = new FormUrlEncodedContent(values);
-
-
-        //    using (var httpClient = new HttpClient())
-        //    {
-        //        var response = await httpClient.PostAsync("https://localhost:7214/api/submit", content);
-        //        var responseString = await response.Content.ReadAsStringAsync();
-        //    }
-        //    return Ok();
-        //}
-
-        //[Route("api/submit")]
-        //public IActionResult Post()
-        //{
-        //    return Ok();
-        //}
-
-        //private void PrintSupervisors()
-        //{
-        //    foreach (Supervisor supervisor in _supervisors)
-        //    {
-        //        Console.WriteLine($"{supervisor.Jurisdiction} - {supervisor.LastName}, {supervisor.FirstName}");
-        //    }
-        //}
-
-        private void FormatSupervisors()
-        {
-            foreach (Supervisor supervisor in _supervisors)
-            {
-                _formattedSupervisors.Add($"{supervisor.Jurisdiction} - {supervisor.LastName}, {supervisor.FirstName}");
+                return BadRequest(_invalidParamsMessage);
             }
         }
 
